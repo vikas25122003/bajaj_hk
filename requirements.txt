@@ -4,5 +4,5 @@ python-dotenv
 langchain-groq
 langchain-openai
 pypdf
-
-
+faiss-cpu
+gunicorn 
