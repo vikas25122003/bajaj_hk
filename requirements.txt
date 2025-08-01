@@ -119,13 +119,13 @@ openai==1.98.0
 openai-whisper==20240930
 opencv-python==4.10.0.84
 opencv-python-headless==4.10.0.84
-opentelemetry-api==1.31.1
+opentelemetry-api==1.24.0
 opentelemetry-exporter-otlp==1.31.1
 opentelemetry-exporter-otlp-proto-common==1.31.1
-opentelemetry-exporter-otlp-proto-grpc==1.31.1
+opentelemetry-exporter-otlp-proto-grpc==1.24.0
 opentelemetry-exporter-otlp-proto-http==1.31.1
-opentelemetry-proto==1.31.1
-opentelemetry-sdk==1.31.1
+opentelemetry-proto==1.24.0
+opentelemetry-sdk==1.24.0
 opentelemetry-semantic-conventions==0.52b1
 openvino==2025.0.0
 openvino-telemetry==2025.1.0
@@ -144,7 +144,7 @@ prometheus_client==0.21.1
 prompt_toolkit==3.0.50
 propcache==0.3.1
 proto-plus==1.24.0
-protobuf
+protobuf==4.25.3
 pruna==0.2.0.post1
 psutil==6.1.0
 pure_eval==0.2.3
@@ -236,4 +236,5 @@ yarl==1.18.3
 yaspin==3.1.0
 zipp==3.21.0
 zstandard==0.23.0
+
 
