@@ -13,9 +13,8 @@ from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain.chains import create_retrieval_chain
 from langchain.chains.combine_documents import create_stuff_documents_chain
 from langchain_core.prompts import ChatPromptTemplate
-
-# --- Final Change: Using the lightweight InMemoryVectorStore ---
-from langchain.vectorstores.in_memory import InMemoryVectorStore
+# Corrected import for InMemoryVectorStore
+from langchain_community.vectorstores import InMemoryVectorStore
 
 # Load environment variables from .env file
 load_dotenv()
@@ -33,35 +32,25 @@ class ApiResponse(BaseModel):
 
 # Core function to process documents and questions
 async def process_questions(doc_url: str, questions: list[str]) -> list[str]:
-    """
-    Processes a PDF from a URL and answers questions using a lightweight vector store.
-    """
     try:
-        # Load the document from the URL
         loader = PyPDFLoader(doc_url)
         docs = loader.load()
 
-        # Split the document into manageable chunks
         text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
         split_docs = text_splitter.split_documents(docs)
 
-        # Create embeddings using OpenAI
         embeddings = OpenAIEmbeddings()
-
-        # --- Final Change: Use the lightweight vector store instead of FAISS ---
+        
         vectorstore = InMemoryVectorStore.from_documents(split_docs, embeddings)
         
-        # Create a retriever from the vector store
         retriever = vectorstore.as_retriever()
 
-        # Define the Groq LLM with JSON mode
         llm = ChatGroq(
             temperature=0.1,
             model="llama3-8b-8192",
             model_kwargs={"response_format": {"type": "json_object"}},
         )
 
-        # Define the prompt template with JSON instructions
         prompt = ChatPromptTemplate.from_template(
             """
             Answer the following question based only on the provided context.
@@ -76,7 +65,6 @@ async def process_questions(doc_url: str, questions: list[str]) -> list[str]:
             """
         )
 
-        # Create the processing chains
         document_chain = create_stuff_documents_chain(llm, prompt)
         retrieval_chain = create_retrieval_chain(retriever, document_chain)
 
@@ -86,7 +74,6 @@ async def process_questions(doc_url: str, questions: list[str]) -> list[str]:
             answer_content = response.get("answer", '{}')
             
             try:
-                # The model's output is a JSON string, so we parse it
                 answer_json = json.loads(answer_content)
                 final_answer = answer_json.get("answer", "Could not find an answer in the expected format.")
             except json.JSONDecodeError:
