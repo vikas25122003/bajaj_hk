@@ -120,10 +120,10 @@ openai-whisper==20240930
 opencv-python==4.10.0.84
 opencv-python-headless==4.10.0.84
 opentelemetry-api==1.24.0
-opentelemetry-exporter-otlp==1.31.1
-opentelemetry-exporter-otlp-proto-common==1.31.1
+opentelemetry-exporter-otlp==1.24.0
+opentelemetry-exporter-otlp-proto-common==1.24.0
 opentelemetry-exporter-otlp-proto-grpc==1.24.0
-opentelemetry-exporter-otlp-proto-http==1.31.1
+opentelemetry-exporter-otlp-proto-http==1.24.0
 opentelemetry-proto==1.24.0
 opentelemetry-sdk==1.24.0
 opentelemetry-semantic-conventions==0.52b1
@@ -236,5 +236,6 @@ yarl==1.18.3
 yaspin==3.1.0
 zipp==3.21.0
 zstandard==0.23.0
+
 
 
