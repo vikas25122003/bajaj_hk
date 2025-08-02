@@ -7,3 +7,4 @@ pypdf
 faiss-cpu
 gunicorn
 langchain-community
+starlette

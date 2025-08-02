@@ -1,7 +1,8 @@
 import os
 import uvicorn
 import json
-from fastapi import FastAPI, Request, HTTPException, StaticFiles
+from fastapi import FastAPI, Request, HTTPException
+from starlette.staticfiles import StaticFiles
 from pydantic import BaseModel
 from dotenv import load_dotenv
 
