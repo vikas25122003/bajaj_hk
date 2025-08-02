@@ -8,14 +8,13 @@ from dotenv import load_dotenv
 
 # LangChain Imports
 from langchain_groq import ChatGroq
+from langchain_openai import OpenAIEmbeddings
 from langchain_community.document_loaders import PyPDFLoader
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain.chains import create_retrieval_chain
 from langchain.chains.combine_documents import create_stuff_documents_chain
 from langchain_core.prompts import ChatPromptTemplate
 from langchain.vectorstores import FAISS
-# --- Use Google's Gemini for Embeddings ---
-from langchain_google_genai import GoogleGenerativeAIEmbeddings
 
 # Load environment variables
 load_dotenv()
@@ -38,40 +37,41 @@ class ApiResponse(BaseModel):
 # Core function to process documents and questions
 async def process_questions(doc_url: str, questions: list[str]) -> list[str]:
     try:
-        if not os.getenv("GOOGLE_API_KEY"):
-            raise ValueError("GOOGLE_API_KEY not found in environment variables")
-
         loader = PyPDFLoader(doc_url)
         docs = loader.load()
 
         text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
         split_docs = text_splitter.split_documents(docs)
 
-        # --- Use Google's model for embeddings ---
-        embeddings = GoogleGenerativeAIEmbeddings(model="models/text-embedding-004")
-
+        embeddings = OpenAIEmbeddings()
         vectorstore = FAISS.from_documents(split_docs, embeddings)
         retriever = vectorstore.as_retriever()
 
         llm = ChatGroq(
             temperature=0.1,
-            model="deepseek-r1-distill-llama-70b",
+            model="llama3-70b-8192",
             model_kwargs={"response_format": {"type": "json_object"}},
         )
 
+        # Final, more aggressive prompt with an example
         prompt = ChatPromptTemplate.from_template(
-        """
-        Answer the following question based only on the provided context.
-        Provide a concise, direct, natural-language answer. If the context provides a structured answer with conditions or lists, summarize them into a complete sentence.
-        Your final response MUST be a JSON object with a single key called "answer", and the value must be a single string.
+            """
+            Your task is to answer the question based ONLY on the context provided.
+            You must provide the answer as a single, clean, natural-language sentence.
+            Do NOT return a dictionary or any other structured format. Your entire output must be a simple string.
 
-        <context>
-        {context}
-        </context>
+            For example, if the question is about maternity coverage, a good answer is:
+            "Yes, the policy covers maternity expenses including childbirth and lawful medical termination of pregnancy, but excludes ectopic pregnancy."
 
-        Question: {input}
-        """
-    )
+            Your final response MUST be a JSON object with a single key called "answer", where the value is the natural-language sentence you generate.
+
+            <context>
+            {context}
+            </context>
+
+            Question: {input}
+            """
+        )
 
         document_chain = create_stuff_documents_chain(llm, prompt)
         retrieval_chain = create_retrieval_chain(retriever, document_chain)
@@ -87,7 +87,6 @@ async def process_questions(doc_url: str, questions: list[str]) -> list[str]:
             except json.JSONDecodeError:
                 final_answer = f"Error: Model did not return valid JSON. Received: {answer_content}"
             
-            # This line fixes the Pydantic validation error
             answers.append(str(final_answer))
 
         return answers
