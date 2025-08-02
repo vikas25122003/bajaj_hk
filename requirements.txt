@@ -2,9 +2,9 @@ fastapi
 uvicorn
 python-dotenv
 langchain-groq
-langchain-openai
+langchain-community
 pypdf
 faiss-cpu
 gunicorn
-langchain-community
 starlette
+sentence-transformers

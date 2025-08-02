@@ -8,7 +8,6 @@ from dotenv import load_dotenv
 
 # LangChain Imports
 from langchain_groq import ChatGroq
-from langchain_openai import OpenAIEmbeddings
 from langchain_community.document_loaders import PyPDFLoader
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain.chains import create_retrieval_chain
@@ -16,13 +15,16 @@ from langchain.chains.combine_documents import create_stuff_documents_chain
 from langchain_core.prompts import ChatPromptTemplate
 from langchain.vectorstores import FAISS
 
-# Load environment variables from .env file
+# --- Use Open-Source HuggingFaceEmbeddings ---
+from langchain_community.embeddings import HuggingFaceEmbeddings
+
+# Load environment variables (now only needs GROQ_API_KEY)
 load_dotenv()
 
 # Initialize the FastAPI app
 app = FastAPI()
 
-# Mount the 'static' directory to serve files like your sample PDF
+# Mount the 'static' directory to serve files
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
 
@@ -43,7 +45,9 @@ async def process_questions(doc_url: str, questions: list[str]) -> list[str]:
         text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
         split_docs = text_splitter.split_documents(docs)
 
-        embeddings = OpenAIEmbeddings()
+        # --- Use a free, open-source model for embeddings ---
+        embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
+
         vectorstore = FAISS.from_documents(split_docs, embeddings)
         retriever = vectorstore.as_retriever()
 
