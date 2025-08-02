@@ -55,7 +55,7 @@ async def process_questions(doc_url: str, questions: list[str]) -> list[str]:
 
         llm = ChatGroq(
             temperature=0.1,
-            model="llama3-8b-8192",
+            model="deepseek-r1-distill-llama-70b",
             model_kwargs={"response_format": {"type": "json_object"}},
         )
 
