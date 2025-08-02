@@ -54,30 +54,22 @@ async def process_questions(doc_url: str, questions: list[str]) -> list[str]:
             retriever = vectorstore.as_retriever()
             retriever_cache[doc_url] = retriever
 
+        # --- Turn OFF JSON mode for the model ---
         llm = ChatGroq(
             temperature=0.1,
-            model="gemma2-9b-it",
-            model_kwargs={"response_format": {"type": "json_object"}},
+            model="llama3-70b-8192", # Sticking with a reliable model
         )
         
-        # Final prompt with escaped curly braces for the example
+        # --- Simplify the prompt to ask for plain text ONLY ---
         prompt = ChatPromptTemplate.from_template(
             """
             Your task is to answer the question based ONLY on the context provided.
-            Your final response MUST be a valid JSON object.
-            It must contain a single key called "answer".
-            The value of the "answer" key MUST be a single, natural-language sentence correctly enclosed in double quotes.
-
-            For example:
-            {{
-                "answer": "This is a correct, natural language answer in a valid JSON string."
-            }}
-
-            Do NOT just write the text. It MUST be a valid JSON string value.
+            Provide the answer as a single, clean, natural-language sentence.
+            Do NOT add any extra formatting, titles, or introductions. Just the answer.
 
             <context>
             {context}
-            </context>
+            </context
 
             Question: {input}
             """
@@ -89,15 +81,9 @@ async def process_questions(doc_url: str, questions: list[str]) -> list[str]:
         answers = []
         for question in questions:
             response = await retrieval_chain.ainvoke({"input": question})
-            answer_content = response.get("answer", '{}')
-            
-            try:
-                answer_json = json.loads(answer_content)
-                final_answer = answer_json.get("answer", "Could not find an answer in the expected format.")
-            except json.JSONDecodeError:
-                final_answer = f"Error: Model did not return valid JSON. Received: {answer_content}"
-            
-            answers.append(str(final_answer))
+            # --- Simplify answer handling ---
+            final_answer = response.get("answer", "Could not find an answer.")
+            answers.append(final_answer.strip())
 
         return answers
 
