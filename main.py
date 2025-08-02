@@ -14,11 +14,10 @@ from langchain.chains import create_retrieval_chain
 from langchain.chains.combine_documents import create_stuff_documents_chain
 from langchain_core.prompts import ChatPromptTemplate
 from langchain.vectorstores import FAISS
+# --- Use GoogleGenerativeAIEmbeddings instead of HuggingFace ---
+from langchain_google_genai import GoogleGenerativeAIEmbeddings
 
-# --- Use Open-Source HuggingFaceEmbeddings ---
-from langchain_community.embeddings import HuggingFaceEmbeddings
-
-# Load environment variables (now only needs GROQ_API_KEY)
+# Load environment variables
 load_dotenv()
 
 # Initialize the FastAPI app
@@ -39,14 +38,18 @@ class ApiResponse(BaseModel):
 # Core function to process documents and questions
 async def process_questions(doc_url: str, questions: list[str]) -> list[str]:
     try:
+        # --- Make sure your GOOGLE_API_KEY is set as an environment variable ---
+        if not os.getenv("GOOGLE_API_KEY"):
+            raise ValueError("GOOGLE_API_KEY not found in environment variables")
+
         loader = PyPDFLoader(doc_url)
         docs = loader.load()
 
         text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
         split_docs = text_splitter.split_documents(docs)
 
-        # --- Use a free, open-source model for embeddings ---
-        embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
+        # --- Use Google's model for embeddings ---
+        embeddings = GoogleGenerativeAIEmbeddings(model="models/text-embedding-004")
 
         vectorstore = FAISS.from_documents(split_docs, embeddings)
         retriever = vectorstore.as_retriever()
