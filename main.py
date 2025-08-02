@@ -60,18 +60,18 @@ async def process_questions(doc_url: str, questions: list[str]) -> list[str]:
         )
 
         prompt = ChatPromptTemplate.from_template(
-            """
-            Answer the following question based only on the provided context.
-            Provide a concise and direct answer. Your response MUST be a JSON object
-            with a single key called "answer".
+        """
+        Answer the following question based only on the provided context.
+        Provide a concise, direct, natural-language answer. If the context provides a structured answer with conditions or lists, summarize them into a complete sentence.
+        Your final response MUST be a JSON object with a single key called "answer", and the value must be a single string.
 
-            <context>
-            {context}
-            </context>
+        <context>
+        {context}
+        </context>
 
-            Question: {input}
-            """
-        )
+        Question: {input}
+        """
+    )
 
         document_chain = create_stuff_documents_chain(llm, prompt)
         retrieval_chain = create_retrieval_chain(retriever, document_chain)
