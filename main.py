@@ -56,7 +56,7 @@ async def process_questions(doc_url: str, questions: list[str]) -> list[str]:
 
         llm = ChatGroq(
             temperature=0.1,
-            model="llama3-70b-8192",
+            model="qwen/qwen3-32b",
             model_kwargs={"response_format": {"type": "json_object"}},
         )
         
