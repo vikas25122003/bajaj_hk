@@ -36,7 +36,7 @@ class ApiRequest(BaseModel):
 class ApiResponse(BaseModel):
     answers: list[str]
 
-# Core function to process documents and questions
+# Core function
 async def process_questions(doc_url: str, questions: list[str]) -> list[str]:
     try:
         if not os.getenv("GOOGLE_API_KEY"):
@@ -60,7 +60,7 @@ async def process_questions(doc_url: str, questions: list[str]) -> list[str]:
             model_kwargs={"response_format": {"type": "json_object"}},
         )
         
-        # Final, most explicit prompt
+        # Final prompt with escaped curly braces for the example
         prompt = ChatPromptTemplate.from_template(
             """
             Your task is to answer the question based ONLY on the context provided.
@@ -69,9 +69,9 @@ async def process_questions(doc_url: str, questions: list[str]) -> list[str]:
             The value of the "answer" key MUST be a single, natural-language sentence correctly enclosed in double quotes.
 
             For example:
-            {
+            {{
                 "answer": "This is a correct, natural language answer in a valid JSON string."
-            }
+            }}
 
             Do NOT just write the text. It MUST be a valid JSON string value.
 
