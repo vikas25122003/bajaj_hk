@@ -8,13 +8,14 @@ from dotenv import load_dotenv
 
 # LangChain Imports
 from langchain_groq import ChatGroq
-from langchain_openai import OpenAIEmbeddings
 from langchain_community.document_loaders import PyPDFLoader
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain.chains import create_retrieval_chain
 from langchain.chains.combine_documents import create_stuff_documents_chain
 from langchain_core.prompts import ChatPromptTemplate
 from langchain.vectorstores import FAISS
+# --- Use Google's Gemini for Embeddings ---
+from langchain_google_genai import GoogleGenerativeAIEmbeddings
 
 # Load environment variables
 load_dotenv()
@@ -37,13 +38,18 @@ class ApiResponse(BaseModel):
 # Core function to process documents and questions
 async def process_questions(doc_url: str, questions: list[str]) -> list[str]:
     try:
+        if not os.getenv("GOOGLE_API_KEY"):
+            raise ValueError("GOOGLE_API_KEY not found in environment variables")
+
         loader = PyPDFLoader(doc_url)
         docs = loader.load()
 
         text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
         split_docs = text_splitter.split_documents(docs)
 
-        embeddings = OpenAIEmbeddings()
+        # --- Use Google's model for embeddings ---
+        embeddings = GoogleGenerativeAIEmbeddings(model="models/text-embedding-004")
+
         vectorstore = FAISS.from_documents(split_docs, embeddings)
         retriever = vectorstore.as_retriever()
 
@@ -81,7 +87,7 @@ async def process_questions(doc_url: str, questions: list[str]) -> list[str]:
             except json.JSONDecodeError:
                 final_answer = f"Error: Model did not return valid JSON. Received: {answer_content}"
             
-            # --- THE FIX: Convert final_answer to a string before appending ---
+            # This line fixes the Pydantic validation error
             answers.append(str(final_answer))
 
         return answers
