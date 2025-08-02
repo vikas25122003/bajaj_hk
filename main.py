@@ -57,7 +57,7 @@ async def process_questions(doc_url: str, questions: list[str]) -> list[str]:
         # --- Turn OFF JSON mode for the model ---
         llm = ChatGroq(
             temperature=0.1,
-            model="gemma2-9b-it", # Sticking with a reliable model
+            model="qwen/qwen3-32b", # Sticking with a reliable model
         )
         
         # --- Simplify the prompt to ask for plain text ONLY ---
