@@ -1,7 +1,7 @@
 import os
 import uvicorn
 import json
-from fastapi import FastAPI, Request, HTTPException
+from fastapi import FastAPI, Request, HTTPException, StaticFiles
 from pydantic import BaseModel
 from dotenv import load_dotenv
 
@@ -13,14 +13,17 @@ from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain.chains import create_retrieval_chain
 from langchain.chains.combine_documents import create_stuff_documents_chain
 from langchain_core.prompts import ChatPromptTemplate
-# Corrected import for InMemoryVectorStore
-from langchain_community.vectorstores import InMemoryVectorStore
+from langchain.vectorstores import FAISS
 
 # Load environment variables from .env file
 load_dotenv()
 
 # Initialize the FastAPI app
 app = FastAPI()
+
+# Mount the 'static' directory to serve files like your sample PDF
+app.mount("/static", StaticFiles(directory="static"), name="static")
+
 
 # Pydantic models for API request and response structure
 class ApiRequest(BaseModel):
@@ -40,9 +43,7 @@ async def process_questions(doc_url: str, questions: list[str]) -> list[str]:
         split_docs = text_splitter.split_documents(docs)
 
         embeddings = OpenAIEmbeddings()
-        
-        vectorstore = InMemoryVectorStore.from_documents(split_docs, embeddings)
-        
+        vectorstore = FAISS.from_documents(split_docs, embeddings)
         retriever = vectorstore.as_retriever()
 
         llm = ChatGroq(
