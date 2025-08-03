@@ -54,22 +54,22 @@ async def process_questions(doc_url: str, questions: list[str]) -> list[str]:
             retriever = vectorstore.as_retriever()
             retriever_cache[doc_url] = retriever
 
-        # --- Turn OFF JSON mode for the model ---
         llm = ChatGroq(
             temperature=0.1,
-            model="qwen/qwen3-32b", # Sticking with a reliable model
+            model="qwen/qwen3-32b", 
         )
         
-        # --- Simplify the prompt to ask for plain text ONLY ---
+        # Final prompt to remove the <think> block
         prompt = ChatPromptTemplate.from_template(
             """
             Your task is to answer the question based ONLY on the context provided.
             Provide the answer as a single, clean, natural-language sentence.
-            Do NOT add any extra formatting, titles, or introductions. Just the answer.
+            Do NOT include your thought process or any XML tags like <think>.
+            Your entire output must be only the answer sentence.
 
             <context>
             {context}
-            </context
+            </context>
 
             Question: {input}
             """
@@ -81,7 +81,6 @@ async def process_questions(doc_url: str, questions: list[str]) -> list[str]:
         answers = []
         for question in questions:
             response = await retrieval_chain.ainvoke({"input": question})
-            # --- Simplify answer handling ---
             final_answer = response.get("answer", "Could not find an answer.")
             answers.append(final_answer.strip())
 
