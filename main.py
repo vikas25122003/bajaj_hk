@@ -7,8 +7,7 @@ from pydantic import BaseModel
 from dotenv import load_dotenv
 
 # LangChain Imports
-from langchain_groq import ChatGroq
-from langchain_google_genai import GoogleGenerativeAIEmbeddings
+from langchain_google_genai import GoogleGenerativeAIEmbeddings, ChatGoogleGenerativeAI
 from langchain_community.document_loaders import PyPDFLoader
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain.chains import create_retrieval_chain
@@ -54,15 +53,14 @@ async def process_questions(doc_url: str, questions: list[str]) -> list[str]:
             retriever = vectorstore.as_retriever()
             retriever_cache[doc_url] = retriever
 
-        llm = ChatGroq(
-            temperature=0.1,
-            model="qwen/qwen3-32b", 
-        )
+        # --- Using Gemini 1.5 Flash for speed and accuracy ---
+        llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0.1, convert_system_message_to_human=True)
         
         prompt = ChatPromptTemplate.from_template(
             """
             Your task is to answer the question based ONLY on the context provided.
             Provide the answer as a single, clean, natural-language sentence.
+            Do NOT include your thought process. Just the answer.
 
             <context>
             {context}
@@ -78,15 +76,7 @@ async def process_questions(doc_url: str, questions: list[str]) -> list[str]:
         answers = []
         for question in questions:
             response = await retrieval_chain.ainvoke({"input": question})
-            raw_answer = response.get("answer", "Could not find an answer.")
-
-            # --- THE FINAL FIX: Manually remove the <think> block ---
-            final_answer = raw_answer
-            if '</think>' in raw_answer:
-                # Take only the text that comes AFTER the </think> tag
-                final_answer = raw_answer.split('</think>')[-1]
-            
-            # Clean up any leading/trailing whitespace
+            final_answer = response.get("answer", "Could not find an answer.")
             answers.append(final_answer.strip())
 
         return answers
