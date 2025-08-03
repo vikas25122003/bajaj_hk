@@ -59,13 +59,10 @@ async def process_questions(doc_url: str, questions: list[str]) -> list[str]:
             model="qwen/qwen3-32b", 
         )
         
-        # Final prompt to remove the <think> block
         prompt = ChatPromptTemplate.from_template(
             """
             Your task is to answer the question based ONLY on the context provided.
             Provide the answer as a single, clean, natural-language sentence.
-            Do NOT include your thought process or any XML tags like <think>.
-            Your entire output must be only the answer sentence.
 
             <context>
             {context}
@@ -81,7 +78,15 @@ async def process_questions(doc_url: str, questions: list[str]) -> list[str]:
         answers = []
         for question in questions:
             response = await retrieval_chain.ainvoke({"input": question})
-            final_answer = response.get("answer", "Could not find an answer.")
+            raw_answer = response.get("answer", "Could not find an answer.")
+
+            # --- THE FINAL FIX: Manually remove the <think> block ---
+            final_answer = raw_answer
+            if '</think>' in raw_answer:
+                # Take only the text that comes AFTER the </think> tag
+                final_answer = raw_answer.split('</think>')[-1]
+            
+            # Clean up any leading/trailing whitespace
             answers.append(final_answer.strip())
 
         return answers
