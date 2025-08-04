@@ -13,7 +13,7 @@ from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain.chains import create_retrieval_chain
 from langchain.chains.combine_documents import create_stuff_documents_chain
 from langchain_core.prompts import ChatPromptTemplate
-from langchain.vectorstores import FAISS
+from langchain_community.vectorstores import FAISS
 
 # Load environment variables
 load_dotenv()
@@ -38,8 +38,11 @@ class ApiResponse(BaseModel):
 # Core function
 async def process_questions(doc_url: str, questions: list[str]) -> list[str]:
     try:
-        if not os.getenv("GOOGLE_API_KEY"):
-            raise ValueError("GOOGLE_API_KEY not found in environment variables")
+        embedding_api_key = os.getenv("GOOGLE_EMBEDDING_API_KEY")
+        generative_api_key = os.getenv("GOOGLE_GENERATIVE_API_KEY")
+
+        if not embedding_api_key or not generative_api_key:
+            raise ValueError("Both GOOGLE_EMBEDDING_API_KEY and GOOGLE_GENERATIVE_API_KEY must be set.")
 
         if doc_url in retriever_cache:
             retriever = retriever_cache[doc_url]
@@ -48,13 +51,16 @@ async def process_questions(doc_url: str, questions: list[str]) -> list[str]:
             docs = loader.load()
             text_splitter = RecursiveCharacterTextSplitter(chunk_size=750, chunk_overlap=100)
             split_docs = text_splitter.split_documents(docs)
-            embeddings = GoogleGenerativeAIEmbeddings(model="models/text-embedding-004")
+            
+            # Use the first API key for embeddings
+            embeddings = GoogleGenerativeAIEmbeddings(model="models/text-embedding-004", google_api_key=embedding_api_key)
+            
             vectorstore = FAISS.from_documents(split_docs, embeddings)
             retriever = vectorstore.as_retriever()
             retriever_cache[doc_url] = retriever
 
-        # --- Using Gemini 1.5 Flash for speed and accuracy ---
-        llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0.1, convert_system_message_to_human=True)
+        # Use the second API key for the chat model
+        llm = ChatGoogleGenerativeAI(model="gemini-1.5-flash-latest", temperature=0.1, google_api_key=generative_api_key)
         
         prompt = ChatPromptTemplate.from_template(
             """
