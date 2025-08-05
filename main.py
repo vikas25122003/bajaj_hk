@@ -13,7 +13,6 @@ from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain.chains.combine_documents import create_stuff_documents_chain
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_community.vectorstores import FAISS
-# --- Import for Re-ranking ---
 from langchain_cohere import CohereRerank
 from langchain.chains.retrieval import create_retrieval_chain
 
@@ -55,6 +54,7 @@ async def process_questions(doc_url: str, questions: list[str]) -> list[str]:
             text_splitter = RecursiveCharacterTextSplitter(chunk_size=750, chunk_overlap=100)
             split_docs = text_splitter.split_documents(docs)
             
+            # Use the first API key for embeddings
             embeddings = GoogleGenerativeAIEmbeddings(model="models/text-embedding-004", google_api_key=embedding_api_key)
             
             vectorstore = FAISS.from_documents(split_docs, embeddings)
@@ -62,12 +62,11 @@ async def process_questions(doc_url: str, questions: list[str]) -> list[str]:
             retriever_cache[doc_url] = base_retriever
 
         # Use the second API key for the chat model
-        llm = ChatGoogleGenerativeAI(model="gemini-1.5-flash-latest", temperature=0.1, google_api_key=generative_api_key)
+        llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0.1, google_api_key=generative_api_key)
         
         # Use the third API key for the re-ranker
-        reranker = CohereRerank(top_n=3, cohere_api_key=cohere_api_key)
+        reranker = CohereRerank(model="rerank-english-v3.0", top_n=3, cohere_api_key=cohere_api_key)
         
-        # Batch Prompt for a single API call
         formatted_questions = "\n".join(f"- {q}" for q in questions)
         
         prompt = ChatPromptTemplate.from_template(
@@ -88,23 +87,14 @@ async def process_questions(doc_url: str, questions: list[str]) -> list[str]:
         
         document_chain = create_stuff_documents_chain(llm, prompt)
         
-        # Create a new retrieval chain that includes the re-ranker
-        # Note: The re-ranker is not directly part of the LCEL chain in this batch setup.
-        # We manually retrieve, re-rank, and then invoke the document chain.
-
-        # Retrieve initial context based on all questions
         initial_docs = await base_retriever.ainvoke(" ".join(questions))
-        
-        # Re-rank the retrieved documents
         reranked_docs = await reranker.acompress_documents(documents=initial_docs, query=" ".join(questions))
         
-        # Single API Call with re-ranked context
         response = await document_chain.ainvoke({
             "input": formatted_questions,
             "context": reranked_docs
         })
 
-        # The model's response should be a JSON string containing the list of answers
         answer_text = response.strip()
         
         try:
