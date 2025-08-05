@@ -6,15 +6,16 @@ from starlette.staticfiles import StaticFiles
 from pydantic import BaseModel
 from dotenv import load_dotenv
 
+# Import for Google's native SDK
+import google.generativeai as genai
+
 # LangChain Imports
-from langchain_google_genai import GoogleGenerativeAIEmbeddings, ChatGoogleGenerativeAI
+from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from langchain_community.document_loaders import PyPDFLoader
 from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain.chains.combine_documents import create_stuff_documents_chain
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_community.vectorstores import FAISS
 from langchain_cohere import CohereRerank
-from langchain.chains.retrieval import create_retrieval_chain
 
 # Load environment variables
 load_dotenv()
@@ -44,7 +45,7 @@ async def process_questions(doc_url: str, questions: list[str]) -> list[str]:
         cohere_api_key = os.getenv("COHERE_API_KEY")
 
         if not embedding_api_key or not generative_api_key or not cohere_api_key:
-            raise ValueError("All API keys (GOOGLE_EMBEDDING, GOOGLE_GENERATIVE, COHERE) must be set.")
+            raise ValueError("All API keys must be set.")
 
         if doc_url in retriever_cache:
             base_retriever = retriever_cache[doc_url]
@@ -53,49 +54,46 @@ async def process_questions(doc_url: str, questions: list[str]) -> list[str]:
             docs = loader.load()
             text_splitter = RecursiveCharacterTextSplitter(chunk_size=750, chunk_overlap=100)
             split_docs = text_splitter.split_documents(docs)
-            
-            # Use the first API key for embeddings
             embeddings = GoogleGenerativeAIEmbeddings(model="models/text-embedding-004", google_api_key=embedding_api_key)
-            
             vectorstore = FAISS.from_documents(split_docs, embeddings)
             base_retriever = vectorstore.as_retriever(search_kwargs={"k": 10})
             retriever_cache[doc_url] = base_retriever
 
-        # Use the second API key for the chat model
-        llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0.1, google_api_key=generative_api_key)
+        # Configure the native Google AI client for the generative step
+        genai.configure(api_key=generative_api_key)
+        llm = genai.GenerativeModel(model_name="gemini-2.5-flash")
         
-        # Use the third API key for the re-ranker
+        # Use the Cohere API key for the re-ranker
         reranker = CohereRerank(model="rerank-english-v3.0", top_n=3, cohere_api_key=cohere_api_key)
         
+        # Format questions for the batch prompt
         formatted_questions = "\n".join(f"- {q}" for q in questions)
         
-        prompt = ChatPromptTemplate.from_template(
-            """
+        # Retrieve and re-rank the context documents
+        initial_docs = await base_retriever.ainvoke(" ".join(questions))
+        reranked_docs = await reranker.acompress_documents(documents=initial_docs, query=" ".join(questions))
+        context = "\n".join(doc.page_content for doc in reranked_docs)
+        
+        # Create the final prompt string
+        prompt = f"""
             Your task is to answer a list of questions based ONLY on the context provided.
             Provide the answers as a valid JSON object. The JSON object must have a single key called "answers".
             The value of "answers" must be a JSON array of strings, where each string is the answer to a question in the exact same order they were asked.
             Do not include your thought process.
 
             Here is the list of questions you must answer:
-            {input}
+            {formatted_questions}
 
             <context>
             {context}
             </context>
             """
-        )
         
-        document_chain = create_stuff_documents_chain(llm, prompt)
-        
-        initial_docs = await base_retriever.ainvoke(" ".join(questions))
-        reranked_docs = await reranker.acompress_documents(documents=initial_docs, query=" ".join(questions))
-        
-        response = await document_chain.ainvoke({
-            "input": formatted_questions,
-            "context": reranked_docs
-        })
+        # --- Single API Call using the native Google SDK ---
+        response = await llm.generate_content_async(prompt)
 
-        answer_text = response.strip()
+        # Extract and clean the JSON string from the response
+        answer_text = response.text.strip().replace("`json", "").replace("`", "")
         
         try:
             answer_json = json.loads(answer_text)

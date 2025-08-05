@@ -9,3 +9,4 @@ starlette
 langchain-google-genai
 langchain-cohere
 pypdf
+google-generativeai
