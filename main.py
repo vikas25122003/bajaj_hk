@@ -10,10 +10,12 @@ from dotenv import load_dotenv
 from langchain_google_genai import GoogleGenerativeAIEmbeddings, ChatGoogleGenerativeAI
 from langchain_community.document_loaders import PyPDFLoader
 from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain.chains import create_retrieval_chain
+from langchain.chains.combine_documents import create_stuff_documents_chain
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_community.vectorstores import FAISS
-from langchain.chains.combine_documents import create_stuff_documents_chain
+# --- Import for Re-ranking ---
+from langchain_cohere import CohereRerank
+from langchain.chains.retrieval import create_retrieval_chain
 
 # Load environment variables
 load_dotenv()
@@ -38,26 +40,35 @@ class ApiResponse(BaseModel):
 # Core function
 async def process_questions(doc_url: str, questions: list[str]) -> list[str]:
     try:
-        if not os.getenv("GOOGLE_API_KEY"):
-            raise ValueError("GOOGLE_API_KEY not found in environment variables")
+        embedding_api_key = os.getenv("GOOGLE_EMBEDDING_API_KEY")
+        generative_api_key = os.getenv("GOOGLE_GENERATIVE_API_KEY")
+        cohere_api_key = os.getenv("COHERE_API_KEY")
+
+        if not embedding_api_key or not generative_api_key or not cohere_api_key:
+            raise ValueError("All API keys (GOOGLE_EMBEDDING, GOOGLE_GENERATIVE, COHERE) must be set.")
 
         if doc_url in retriever_cache:
-            retriever = retriever_cache[doc_url]
+            base_retriever = retriever_cache[doc_url]
         else:
             loader = PyPDFLoader(doc_url)
             docs = loader.load()
             text_splitter = RecursiveCharacterTextSplitter(chunk_size=750, chunk_overlap=100)
             split_docs = text_splitter.split_documents(docs)
-            embeddings = GoogleGenerativeAIEmbeddings(model="models/text-embedding-004")
+            
+            embeddings = GoogleGenerativeAIEmbeddings(model="models/text-embedding-004", google_api_key=embedding_api_key)
+            
             vectorstore = FAISS.from_documents(split_docs, embeddings)
-            retriever = vectorstore.as_retriever()
-            retriever_cache[doc_url] = retriever
+            base_retriever = vectorstore.as_retriever(search_kwargs={"k": 10})
+            retriever_cache[doc_url] = base_retriever
 
-        llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0.1)
+        # Use the second API key for the chat model
+        llm = ChatGoogleGenerativeAI(model="gemini-1.5-flash-latest", temperature=0.1, google_api_key=generative_api_key)
         
-        # --- New Batch Prompt ---
-        # We format the list of questions into a single string for the prompt
-        formatted_questions = "\\n".join(f"- {q}" for q in questions)
+        # Use the third API key for the re-ranker
+        reranker = CohereRerank(top_n=3, cohere_api_key=cohere_api_key)
+        
+        # Batch Prompt for a single API call
+        formatted_questions = "\n".join(f"- {q}" for q in questions)
         
         prompt = ChatPromptTemplate.from_template(
             """
@@ -75,20 +86,27 @@ async def process_questions(doc_url: str, questions: list[str]) -> list[str]:
             """
         )
         
-        # We only need a simple chain now
         document_chain = create_stuff_documents_chain(llm, prompt)
         
-        # --- Single API Call ---
-        # The entire list of formatted questions is sent in one go.
+        # Create a new retrieval chain that includes the re-ranker
+        # Note: The re-ranker is not directly part of the LCEL chain in this batch setup.
+        # We manually retrieve, re-rank, and then invoke the document chain.
+
+        # Retrieve initial context based on all questions
+        initial_docs = await base_retriever.ainvoke(" ".join(questions))
+        
+        # Re-rank the retrieved documents
+        reranked_docs = await reranker.acompress_documents(documents=initial_docs, query=" ".join(questions))
+        
+        # Single API Call with re-ranked context
         response = await document_chain.ainvoke({
             "input": formatted_questions,
-            "context": await retriever.ainvoke(" ".join(questions)) # Retrieve context based on all questions
+            "context": reranked_docs
         })
 
         # The model's response should be a JSON string containing the list of answers
         answer_text = response.strip()
         
-        # Parse the JSON string to extract the list of answers
         try:
             answer_json = json.loads(answer_text)
             answers = answer_json.get("answers", ["Error parsing model response." for _ in questions])
