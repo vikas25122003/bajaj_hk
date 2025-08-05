@@ -61,7 +61,7 @@ async def process_questions(doc_url: str, questions: list[str]) -> list[str]:
 
         # Configure the native Google AI client for the generative step
         genai.configure(api_key=generative_api_key)
-        llm = genai.GenerativeModel(model_name="gemini-2.5-flash")
+        llm = genai.GenerativeModel(model_name="gemini-2.5-flash-lite")
         
         # Use the Cohere API key for the re-ranker
         reranker = CohereRerank(model="rerank-english-v3.0", top_n=3, cohere_api_key=cohere_api_key)
