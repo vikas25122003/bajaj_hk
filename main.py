@@ -60,7 +60,7 @@ async def process_questions(doc_url: str, questions: list[str]) -> list[str]:
             retriever_cache[doc_url] = retriever
 
         # Use the second API key for the chat model
-        llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash-lite", temperature=0.1, google_api_key=generative_api_key)
+        llm = ChatGoogleGenerativeAI(model="gemini-2.0-flash-lite", temperature=0.1, google_api_key=generative_api_key)
         
         prompt = ChatPromptTemplate.from_template(
             """
