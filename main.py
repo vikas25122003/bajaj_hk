@@ -11,9 +11,9 @@ from langchain_google_genai import GoogleGenerativeAIEmbeddings, ChatGoogleGener
 from langchain_community.document_loaders import PyPDFLoader
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain.chains import create_retrieval_chain
-from langchain.chains.combine_documents import create_stuff_documents_chain
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_community.vectorstores import FAISS
+from langchain.chains.combine_documents import create_stuff_documents_chain
 
 # Load environment variables
 load_dotenv()
@@ -38,11 +38,8 @@ class ApiResponse(BaseModel):
 # Core function
 async def process_questions(doc_url: str, questions: list[str]) -> list[str]:
     try:
-        embedding_api_key = os.getenv("GOOGLE_EMBEDDING_API_KEY")
-        generative_api_key = os.getenv("GOOGLE_GENERATIVE_API_KEY")
-
-        if not embedding_api_key or not generative_api_key:
-            raise ValueError("Both GOOGLE_EMBEDDING_API_KEY and GOOGLE_GENERATIVE_API_KEY must be set.")
+        if not os.getenv("GOOGLE_API_KEY"):
+            raise ValueError("GOOGLE_API_KEY not found in environment variables")
 
         if doc_url in retriever_cache:
             retriever = retriever_cache[doc_url]
@@ -51,39 +48,53 @@ async def process_questions(doc_url: str, questions: list[str]) -> list[str]:
             docs = loader.load()
             text_splitter = RecursiveCharacterTextSplitter(chunk_size=750, chunk_overlap=100)
             split_docs = text_splitter.split_documents(docs)
-            
-            # Use the first API key for embeddings
-            embeddings = GoogleGenerativeAIEmbeddings(model="models/text-embedding-004", google_api_key=embedding_api_key)
-            
+            embeddings = GoogleGenerativeAIEmbeddings(model="models/text-embedding-004")
             vectorstore = FAISS.from_documents(split_docs, embeddings)
             retriever = vectorstore.as_retriever()
             retriever_cache[doc_url] = retriever
 
-        # Use the second API key for the chat model
-        llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0.1, google_api_key=generative_api_key)
+        llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0.1)
+        
+        # --- New Batch Prompt ---
+        # We format the list of questions into a single string for the prompt
+        formatted_questions = "\\n".join(f"- {q}" for q in questions)
         
         prompt = ChatPromptTemplate.from_template(
             """
-            Your task is to answer the question based ONLY on the context provided.
-            Provide the answer as a single, clean, natural-language sentence.
-            Do NOT include your thought process. Just the answer.
+            Your task is to answer a list of questions based ONLY on the context provided.
+            Provide the answers as a valid JSON object. The JSON object must have a single key called "answers".
+            The value of "answers" must be a JSON array of strings, where each string is the answer to a question in the exact same order they were asked.
+            Do not include your thought process.
+
+            Here is the list of questions you must answer:
+            {input}
 
             <context>
             {context}
             </context>
-
-            Question: {input}
             """
         )
-
+        
+        # We only need a simple chain now
         document_chain = create_stuff_documents_chain(llm, prompt)
-        retrieval_chain = create_retrieval_chain(retriever, document_chain)
+        
+        # --- Single API Call ---
+        # The entire list of formatted questions is sent in one go.
+        response = await document_chain.ainvoke({
+            "input": formatted_questions,
+            "context": await retriever.ainvoke(" ".join(questions)) # Retrieve context based on all questions
+        })
 
-        answers = []
-        for question in questions:
-            response = await retrieval_chain.ainvoke({"input": question})
-            final_answer = response.get("answer", "Could not find an answer.")
-            answers.append(final_answer.strip())
+        # The model's response should be a JSON string containing the list of answers
+        answer_text = response.strip()
+        
+        # Parse the JSON string to extract the list of answers
+        try:
+            answer_json = json.loads(answer_text)
+            answers = answer_json.get("answers", ["Error parsing model response." for _ in questions])
+        except json.JSONDecodeError:
+            print(f"Failed to decode JSON from model response: {answer_text}")
+            answers = [f"Error: Model returned invalid JSON." for _ in questions]
 
         return answers
 

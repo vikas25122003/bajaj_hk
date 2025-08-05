@@ -1,10 +1,10 @@
 fastapi
 uvicorn
 python-dotenv
-langchain-groq
 langchain-community
-pypdf
+pydantic
 faiss-cpu
 gunicorn
 starlette
 langchain-google-genai
+langchain-cohere
