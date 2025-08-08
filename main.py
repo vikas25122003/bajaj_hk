@@ -6,14 +6,13 @@ from starlette.staticfiles import StaticFiles
 from pydantic import BaseModel
 from dotenv import load_dotenv
 
-# Import for Google's native SDK
-import google.generativeai as genai
+# --- Import Groq's async client ---
+from groq import AsyncGroq
 
-# LangChain Imports
+# LangChain Imports for the RAG pipeline
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from langchain_community.document_loaders import PyPDFLoader
 from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain_core.prompts import ChatPromptTemplate
 from langchain_community.vectorstores import FAISS
 from langchain_cohere import CohereRerank
 
@@ -41,11 +40,11 @@ class ApiResponse(BaseModel):
 async def process_questions(doc_url: str, questions: list[str]) -> list[str]:
     try:
         embedding_api_key = os.getenv("GOOGLE_EMBEDDING_API_KEY")
-        generative_api_key = os.getenv("GOOGLE_GENERATIVE_API_KEY")
+        groq_api_key = os.getenv("GROQ_API_KEY")
         cohere_api_key = os.getenv("COHERE_API_KEY")
 
-        if not embedding_api_key or not generative_api_key or not cohere_api_key:
-            raise ValueError("All API keys must be set.")
+        if not embedding_api_key or not groq_api_key or not cohere_api_key:
+            raise ValueError("All API keys (GOOGLE_EMBEDDING, GROQ, COHERE) must be set.")
 
         if doc_url in retriever_cache:
             base_retriever = retriever_cache[doc_url]
@@ -59,20 +58,16 @@ async def process_questions(doc_url: str, questions: list[str]) -> list[str]:
             base_retriever = vectorstore.as_retriever(search_kwargs={"k": 10})
             retriever_cache[doc_url] = base_retriever
 
-        # Configure the native Google AI client for the generative step
-        genai.configure(api_key=generative_api_key)
-        llm = genai.GenerativeModel(model_name="gemini-2.5-flash-lite")
+        # --- Initialize the native Groq Async Client ---
+        groq_client = AsyncGroq(api_key=groq_api_key)
         
-        # Use the Cohere API key for the re-ranker
         reranker = CohereRerank(model="rerank-english-v3.0", top_n=3, cohere_api_key=cohere_api_key)
         
-        # Format questions for the batch prompt
-        formatted_questions = "\n".join(f"- {q}" for q in questions)
+        formatted_questions = "\\n".join(f"- {q}" for q in questions)
         
-        # Retrieve and re-rank the context documents
         initial_docs = await base_retriever.ainvoke(" ".join(questions))
         reranked_docs = await reranker.acompress_documents(documents=initial_docs, query=" ".join(questions))
-        context = "\n".join(doc.page_content for doc in reranked_docs)
+        context = "\\n".join(doc.page_content for doc in reranked_docs)
         
         # Create the final prompt string
         prompt = f"""
@@ -89,11 +84,22 @@ async def process_questions(doc_url: str, questions: list[str]) -> list[str]:
             </context>
             """
         
-        # --- Single API Call using the native Google SDK ---
-        response = await llm.generate_content_async(prompt)
+        # --- Single API Call using the native Groq SDK ---
+        completion = await groq_client.chat.completions.create(
+            model="openai/gpt-oss-20b", # Using a reliable model instead of the one from the snippet
+            messages=[
+                {
+                    "role": "user",
+                    "content": prompt,
+                }
+            ],
+            temperature=0.1,
+            max_tokens=8192,
+            top_p=1,
+            stream=False, # We need the full response, so stream is False
+        )
 
-        # Extract and clean the JSON string from the response
-        answer_text = response.text.strip().replace("`json", "").replace("`", "")
+        answer_text = completion.choices[0].message.content
         
         try:
             answer_json = json.loads(answer_text)

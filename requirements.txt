@@ -6,7 +6,8 @@ pydantic
 faiss-cpu
 gunicorn
 starlette
-langchain-google-genai
+langchain-google-genai 
 langchain-cohere
 pypdf
 google-generativeai
+groq
